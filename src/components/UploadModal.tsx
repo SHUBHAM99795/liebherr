@@ -1,5 +1,8 @@
 /**
  * §6.2 upload modal „Anforderungsdokumente Hinzufügen".
+ * With "Matrix automatisch erstellen" enabled (default), every uploaded PDF
+ * runs the full pipeline: segmentation + KI-Zuweisung + Standardabgleich +
+ * Historienabgleich — the caller is then navigated to the finished matrix.
  */
 
 import { CheckCircle2, Upload } from 'lucide-react';
@@ -8,12 +11,24 @@ import { toast } from 'sonner';
 import { readPageCount } from '../pdf';
 import { savePdfBlob } from '../services/persistence';
 import { useStore } from '../store';
+import { generateMatrix } from '../utils/actions';
 import { Modal, PrimaryButton } from './ui';
 
-export default function UploadModal({ anfrageId, onClose }: { anfrageId: string; onClose: () => void }) {
+export default function UploadModal({
+  anfrageId,
+  onClose,
+  onUploaded,
+}: {
+  anfrageId: string;
+  onClose: () => void;
+  /** called after the pipeline finished, with the new document ids */
+  onUploaded?: (docIds: string[]) => void;
+}) {
   const addDocuments = useStore((s) => s.addDocuments);
   const [files, setFiles] = useState<File[]>([]);
   const [dragging, setDragging] = useState(false);
+  const [autoMatrix, setAutoMatrix] = useState(true);
+  const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const pick = (list: FileList | null) => {
@@ -21,8 +36,6 @@ export default function UploadModal({ anfrageId, onClose }: { anfrageId: string;
     const pdfs = Array.from(list).filter((f) => f.name.toLowerCase().endsWith('.pdf'));
     setFiles((prev) => [...prev, ...pdfs]);
   };
-
-  const [busy, setBusy] = useState(false);
 
   const upload = async () => {
     setBusy(true);
@@ -44,9 +57,16 @@ export default function UploadModal({ anfrageId, onClose }: { anfrageId: string;
     );
     // persist the raw PDF bytes so the file survives page reloads
     await Promise.all(docs.map((d, i) => savePdfBlob(d.id, entries[i].file)));
-    setBusy(false);
     toast.success(`${files.length} Dokument${files.length > 1 ? 'e' : ''} hochgeladen`);
+
+    if (autoMatrix) {
+      for (const d of docs) {
+        await generateMatrix(d.id);
+      }
+    }
+    setBusy(false);
     onClose();
+    onUploaded?.(docs.map((d) => d.id));
   };
 
   return (
@@ -105,9 +125,19 @@ export default function UploadModal({ anfrageId, onClose }: { anfrageId: string;
         </div>
       )}
 
+      <label className="mt-4 flex cursor-pointer items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="h-3.5 w-3.5 accent-blue-600"
+          checked={autoMatrix}
+          onChange={(e) => setAutoMatrix(e.target.checked)}
+        />
+        Matrix automatisch erstellen (Segmentierung + KI-Zuweisung + Abgleiche)
+      </label>
+
       <div className="mt-4 flex justify-end">
         <PrimaryButton icon={<Upload size={14} />} disabled={files.length === 0 || busy} onClick={upload}>
-          {busy ? 'Wird hochgeladen…' : `Upload (${files.length})`}
+          {busy ? 'Matrix wird erstellt…' : `Upload (${files.length})`}
         </PrimaryButton>
       </div>
     </Modal>

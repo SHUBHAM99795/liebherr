@@ -21,9 +21,15 @@ import { useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useStore } from '../store';
-import { segmentationService } from '../services/segmentation';
 import { formatDate } from '../utils/status';
-import { runExcelImport, runHistorienabgleich, runStandardabgleich, runZuweisungAbteilungen } from '../utils/actions';
+import {
+  generateMatrix,
+  runExcelImport,
+  runHistorienabgleich,
+  runStandardabgleich,
+  runZuweisungAbteilungen,
+  segmentDocument,
+} from '../utils/actions';
 import { Dropdown, DropdownItem, TextPromptDialog, ToolbarButton } from '../components/ui';
 import ExportModal from '../components/ExportModal';
 import UploadModal from '../components/UploadModal';
@@ -32,7 +38,7 @@ export default function AnfrageDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const anfrage = useStore((s) => s.anfragen.find((a) => a.id === id));
-  const { renameAnfrage, removeDocuments, setDocument, replaceSegments } = useStore();
+  const { renameAnfrage, removeDocuments } = useStore();
 
   const [selected, setSelected] = useState<string[]>([]);
   const [search, setSearch] = useState('');
@@ -55,32 +61,18 @@ export default function AnfrageDetail() {
   const toggleDoc = (docId: string) =>
     setSelected((prev) => (prev.includes(docId) ? prev.filter((x) => x !== docId) : [...prev, docId]));
 
-  const segmentDoc = async (doc: (typeof anfrage.documents)[number]): Promise<number> => {
-    setDocument(doc.id, { segmentierungsStatus: 'In Bearbeitung' });
-    try {
-      const segments = await segmentationService.segment(doc.pdfUrl);
-      replaceSegments(doc.id, segments);
-      setDocument(doc.id, {
-        segmentierungsStatus: 'Segmentiert',
-        pageCount: Math.max(doc.pageCount, ...segments.map((s) => s.page), 1),
-      });
-      return segments.length;
-    } catch (e) {
-      setDocument(doc.id, { segmentierungsStatus: 'Nicht segmentiert' });
-      toast.error(`Segmentierung von ${doc.fileName} fehlgeschlagen`);
-      return 0;
-    }
-  };
-
   const segmentSelected = async () => {
     const id = toast.loading('Segmentierung läuft…');
     let total = 0;
     for (const doc of selectedDocs) {
       if (doc.segmentierungsStatus === 'Segmentiert') continue;
-      total += await segmentDoc(doc);
+      total += await segmentDocument(doc.id);
     }
     toast.success(`${total} Segmente erstellt`, { id });
   };
+
+  const openMatrix = (docId: string) =>
+    navigate(`/anfrage/${anfrage.id}/details?view=doc-details&specDocId=${docId}&page=1`);
 
   const onImport = async (file: File) => {
     const doc = selectedDocs[0] ?? anfrage.documents[0];
@@ -266,12 +258,11 @@ export default function AnfrageDetail() {
                 className="!h-7 !text-xs"
                 icon={<RefreshCw size={12} />}
                 onClick={async () => {
-                  const id = toast.loading('Segmentierung läuft…');
-                  const n = await segmentDoc(d);
-                  toast.success(`${n} Segmente erstellt`, { id });
+                  const n = await generateMatrix(d.id);
+                  if (n > 0) openMatrix(d.id);
                 }}
               >
-                Segmentieren
+                Matrix erstellen
               </ToolbarButton>
             )}
             <span className="w-24 text-right text-gray-500">{formatDate(d.uploadedAt)}</span>
@@ -280,7 +271,15 @@ export default function AnfrageDetail() {
         {docs.length === 0 && <div className="px-4 py-8 text-center text-gray-400">Keine Dokumente vorhanden.</div>}
       </div>
 
-      {uploading && <UploadModal anfrageId={anfrage.id} onClose={() => setUploading(false)} />}
+      {uploading && (
+        <UploadModal
+          anfrageId={anfrage.id}
+          onClose={() => setUploading(false)}
+          onUploaded={(docIds) => {
+            if (docIds.length) openMatrix(docIds[0]);
+          }}
+        />
+      )}
       {renaming && (
         <TextPromptDialog
           title="Anfrage umbenennen"

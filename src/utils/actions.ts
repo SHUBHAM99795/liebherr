@@ -7,12 +7,105 @@
 import { toast } from 'sonner';
 import type { Segment, SpecDocument } from '../types';
 import { aiService } from '../services/aiService';
-import { classifySegment } from '../services/segmentation';
-import { useStore } from '../store';
+import { classifySegment, segmentationService } from '../services/segmentation';
+import { findDocument, useStore, type SegmentPatch } from '../store';
 import { importComplianceMatrix } from './excel';
 
 function storeState() {
   return useStore.getState();
+}
+
+/** Segment one document (used by upload pipeline and the row button). */
+export async function segmentDocument(docId: string): Promise<number> {
+  const { anfragen, setDocument, replaceSegments } = storeState();
+  const doc = findDocument(anfragen, docId);
+  if (!doc) return 0;
+  setDocument(docId, { segmentierungsStatus: 'In Bearbeitung' });
+  try {
+    const segments = await segmentationService.segment(doc.pdfUrl);
+    replaceSegments(docId, segments);
+    setDocument(docId, {
+      segmentierungsStatus: 'Segmentiert',
+      pageCount: Math.max(doc.pageCount, ...segments.map((s) => s.page), 1),
+    });
+    return segments.length;
+  } catch (e) {
+    setDocument(docId, { segmentierungsStatus: 'Nicht segmentiert' });
+    toast.error(`Segmentierung von ${doc.fileName} fehlgeschlagen`);
+    return 0;
+  }
+}
+
+/**
+ * One-shot matrix generation for a document: segmentation (if needed) +
+ * KI department assignment + Standardabgleich + Historienabgleich.
+ * Leaves a ready-to-review compliance matrix.
+ */
+export async function generateMatrix(docId: string): Promise<number> {
+  const fresh = () => findDocument(useStore.getState().anfragen, docId);
+  let doc = fresh();
+  if (!doc) return 0;
+
+  const id = toast.loading(`Matrix wird erstellt: ${doc.fileName} — Segmentierung…`);
+  let count = doc.segments.length;
+  if (doc.segmentierungsStatus !== 'Segmentiert' || count === 0) {
+    count = await segmentDocument(docId);
+  }
+  if (count === 0) {
+    toast.error('Keine Textsegmente gefunden (gescanntes PDF ohne Textebene?)', { id });
+    return 0;
+  }
+
+  toast.loading(`Matrix wird erstellt: KI-Zuweisung (${count} Segmente)…`, { id });
+  doc = fresh()!;
+  await runZuweisungAbteilungen(doc);
+
+  toast.loading('Matrix wird erstellt: Standardabgleich…', { id });
+  doc = fresh()!;
+  await runStandardabgleich(doc);
+
+  toast.loading('Matrix wird erstellt: Historienabgleich…', { id });
+  doc = fresh()!;
+  await runHistorienabgleich(doc);
+
+  toast.success(`Compliance Matrix erstellt: ${count} Segmente`, { id });
+  return count;
+}
+
+/**
+ * Apply all pending KI suggestions to the matrix in one go:
+ * suggested departments are assigned, Historienabgleich hits fill the
+ * Bewertung + internal comment, standard conflicts mark segments Unklar.
+ * Only segments still "Offen" get a Bewertung — nothing reviewed is touched.
+ */
+export function applyKiSuggestions(doc: SpecDocument): number {
+  const { updateSegment } = storeState();
+  let applied = 0;
+  for (const seg of doc.segments) {
+    if (!seg.ki) continue;
+    const patch: SegmentPatch = {};
+    if (seg.ki.suggestedAbteilungen?.length) {
+      const union = [...new Set([...seg.abteilungen, ...seg.ki.suggestedAbteilungen])];
+      if (union.length !== seg.abteilungen.length) patch.abteilungen = union;
+    }
+    if (seg.bewertung === 'Offen' && seg.typ === 'Anforderung') {
+      if (seg.ki.historienTreffer) {
+        patch.bewertung = seg.ki.historienTreffer.bewertung;
+        if (!seg.kommentarIntern && seg.ki.historienTreffer.kommentar) {
+          patch.kommentarIntern = `Aus ${seg.ki.historienTreffer.anfrageName}: ${seg.ki.historienTreffer.kommentar}`;
+        }
+      } else if (seg.ki.suggestedBewertung) {
+        patch.bewertung = seg.ki.suggestedBewertung;
+      } else if (seg.ki.standardKonflikt) {
+        patch.bewertung = 'Unklar';
+      }
+    }
+    if (Object.keys(patch).length) {
+      updateSegment(doc.id, seg.id, patch, 'KI-Vorbewertung');
+      applied++;
+    }
+  }
+  return applied;
 }
 
 export async function runZuweisungAbteilungen(doc: SpecDocument, segmentIds?: string[]): Promise<void> {
@@ -27,6 +120,7 @@ export async function runZuweisungAbteilungen(doc: SpecDocument, segmentIds?: st
       ki: {
         ...seg.ki,
         suggestedAbteilungen: sug.suggestedAbteilungen,
+        suggestedBewertung: sug.suggestedBewertung ?? seg.ki?.suggestedBewertung,
         matchedChecklistItem: sug.matchedChecklistItem,
         confidence: sug.confidence,
       },

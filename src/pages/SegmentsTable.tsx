@@ -32,6 +32,7 @@ import {
   type SegmentFilters,
 } from '../utils/status';
 import {
+  applyKiSuggestions,
   runExcelImport,
   runHistorienabgleich,
   runSegmentTypeExt,
@@ -183,6 +184,15 @@ export default function SegmentsTable() {
         </ToolbarButton>
         <ToolbarButton icon={<Info size={14} />} onClick={() => runSegmentTypeExt(doc)}>
           SegmentTypeExt Berechnen
+        </ToolbarButton>
+        <ToolbarButton
+          icon={<Info size={14} />}
+          onClick={() => {
+            const n = applyKiSuggestions(doc);
+            toast.success(n ? `${n} KI-Vorschläge übernommen` : 'Keine offenen KI-Vorschläge vorhanden');
+          }}
+        >
+          KI-Vorschläge Übernehmen
         </ToolbarButton>
         <ToolbarButton icon={<Download size={14} />} onClick={() => setExporting(true)}>
           Export Excel

@@ -9,6 +9,7 @@ import type { Abteilung, Anfrage, Checkliste, InternerStandard, Segment } from '
 export interface AiSuggestion {
   segmentId: string;
   suggestedAbteilungen: Abteilung[];
+  suggestedBewertung?: Segment['bewertung'];
   matchedChecklistItem?: string;
   confidence: number;
 }
@@ -41,6 +42,18 @@ const KEYWORD_MAP: { dept: Abteilung; words: string[] }[] = [
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Heuristic pre-assessment ("KI-Vorbewertung") for a requirement text.
+ * Returned as a suggestion only — applied via „KI-Vorschläge Übernehmen".
+ */
+function suggestBewertung(text: string): Segment['bewertung'] | undefined {
+  const t = text.toLowerCase();
+  if (/\b(din|iso|en|iec|vde)\s?-?\d/.test(t) || /\bnorm(en)?\b|\brichtlinien?\b/.test(t)) return 'Unklar';
+  if (/dokumentation|unterlagen|ersatzteilliste|nachweis|zertifikat|protokoll/.test(t)) return 'Keine Daten';
+  if (/kosten|preis|mehrkosten|gewährleistung|verfügbarkeit|frist|termin|vertragsstrafe/.test(t)) return 'Unklar';
+  return undefined;
 }
 
 function randomLatency(): number {
@@ -81,10 +94,12 @@ export const aiService: AiService = {
           score += 1;
         }
       }
-      if (depts.size === 0) continue;
+      const suggestedBewertung = suggestBewertung(seg.text);
+      if (depts.size === 0 && !suggestedBewertung) continue;
       results.push({
         segmentId: seg.id,
         suggestedAbteilungen: [...depts].slice(0, 2),
+        suggestedBewertung,
         matchedChecklistItem: matchedRule,
         confidence: Math.min(0.95, 0.55 + score * 0.1),
       });
