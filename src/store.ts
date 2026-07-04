@@ -22,10 +22,11 @@ import { EMPTY_FILTERS, type SegmentFilters } from './utils/status';
 
 export const CURRENT_USER = 'Max Mustermann';
 
-let idCounter = 1000;
+let idCounter = 0;
+/** Collision-proof across page reloads (persisted data keeps old ids). */
 export function nextId(prefix: string): string {
   idCounter += 1;
-  return `${prefix}-${idCounter}`;
+  return `${prefix}-${Date.now().toString(36)}-${idCounter}`;
 }
 
 function now(): string {
@@ -103,6 +104,8 @@ interface AppState {
   checklisten: Checkliste[];
   standards: InternerStandard[];
   settings: AppSettings;
+  /** true once persisted state has been loaded from IndexedDB */
+  hydrated: boolean;
   /** per-document table UI state, keyed by document id */
   tableUi: Record<string, TableUiState>;
 
@@ -153,6 +156,7 @@ export const useStore = create<AppState>((set, get) => ({
   anfragen: fixtureAnfragen,
   checklisten: fixtureChecklisten,
   standards: fixtureInterneStandards,
+  hydrated: false,
   settings: {
     exportLanguage: 'Deutsch',
     itemsPerPage: 25,
@@ -357,6 +361,35 @@ export const useStore = create<AppState>((set, get) => ({
     });
   },
 }));
+
+/* ---------------- persistence bootstrap ------------------------------- */
+
+import { loadPersistedState, startPersistence } from './services/persistence';
+
+if (typeof window !== 'undefined' && typeof indexedDB !== 'undefined') {
+  loadPersistedState()
+    .then((persisted) => {
+      if (persisted) {
+        useStore.setState({
+          anfragen: persisted.anfragen,
+          checklisten: persisted.checklisten,
+          standards: persisted.standards,
+          settings: persisted.settings,
+          hydrated: true,
+        });
+      } else {
+        useStore.setState({ hydrated: true });
+      }
+      startPersistence(
+        (listener) => useStore.subscribe(listener),
+        () => {
+          const s = useStore.getState();
+          return { anfragen: s.anfragen, checklisten: s.checklisten, standards: s.standards, settings: s.settings };
+        },
+      );
+    })
+    .catch(() => useStore.setState({ hydrated: true }));
+}
 
 /* ---------------- selectors ------------------------------------------- */
 

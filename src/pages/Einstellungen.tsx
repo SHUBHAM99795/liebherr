@@ -3,16 +3,18 @@
  * items per page.
  */
 
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { useState } from 'react';
+import { clearPersistence } from '../services/persistence';
 import { useStore } from '../store';
-import { GhostButton, PrimaryButton, TextPromptDialog } from '../components/ui';
+import { ConfirmDialog, GhostButton, PrimaryButton, TextPromptDialog } from '../components/ui';
 
 export default function Einstellungen() {
   const settings = useStore((s) => s.settings);
   const setSettings = useStore((s) => s.setSettings);
   const [adding, setAdding] = useState(false);
   const [renaming, setRenaming] = useState<number | null>(null);
+  const [resetting, setResetting] = useState(false);
 
   const updateAbteilungen = (next: { name: string; color: string }[]) => setSettings({ abteilungen: next });
 
@@ -78,6 +80,29 @@ export default function Einstellungen() {
           ))}
         </select>
       </div>
+
+      <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4">
+        <h2 className="mb-2 font-semibold">Daten</h2>
+        <p className="mb-2 text-xs text-gray-500">
+          Alle Daten werden lokal im Browser gespeichert (IndexedDB) und überstehen Neuladen der Seite.
+        </p>
+        <GhostButton icon={<RotateCcw size={14} />} className="!text-red-600" onClick={() => setResetting(true)}>
+          Alle Daten zurücksetzen (Demo-Daten wiederherstellen)
+        </GhostButton>
+      </div>
+
+      {resetting && (
+        <ConfirmDialog
+          title="Daten zurücksetzen"
+          message="Alle lokal gespeicherten Anfragen, Bewertungen und hochgeladenen PDFs löschen und die Demo-Daten wiederherstellen?"
+          confirmLabel="Zurücksetzen"
+          onCancel={() => setResetting(false)}
+          onConfirm={async () => {
+            await clearPersistence();
+            window.location.href = '/anfragen';
+          }}
+        />
+      )}
 
       {adding && (
         <TextPromptDialog

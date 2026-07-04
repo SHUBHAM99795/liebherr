@@ -5,6 +5,8 @@
 import { CheckCircle2, Upload } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { readPageCount } from '../pdf';
+import { savePdfBlob } from '../services/persistence';
 import { useStore } from '../store';
 import { Modal, PrimaryButton } from './ui';
 
@@ -20,11 +22,29 @@ export default function UploadModal({ anfrageId, onClose }: { anfrageId: string;
     setFiles((prev) => [...prev, ...pdfs]);
   };
 
-  const upload = () => {
-    addDocuments(
-      anfrageId,
-      files.map((f) => ({ fileName: f.name, pdfUrl: URL.createObjectURL(f), pageCount: 0 })),
+  const [busy, setBusy] = useState(false);
+
+  const upload = async () => {
+    setBusy(true);
+    const entries = await Promise.all(
+      files.map(async (f) => {
+        const pdfUrl = URL.createObjectURL(f);
+        let pageCount = 0;
+        try {
+          pageCount = await readPageCount(pdfUrl);
+        } catch {
+          // not a readable PDF — keep it listed, viewer will show an error
+        }
+        return { file: f, pdfUrl, pageCount };
+      }),
     );
+    const docs = addDocuments(
+      anfrageId,
+      entries.map((e) => ({ fileName: e.file.name, pdfUrl: e.pdfUrl, pageCount: e.pageCount })),
+    );
+    // persist the raw PDF bytes so the file survives page reloads
+    await Promise.all(docs.map((d, i) => savePdfBlob(d.id, entries[i].file)));
+    setBusy(false);
     toast.success(`${files.length} Dokument${files.length > 1 ? 'e' : ''} hochgeladen`);
     onClose();
   };
@@ -86,8 +106,8 @@ export default function UploadModal({ anfrageId, onClose }: { anfrageId: string;
       )}
 
       <div className="mt-4 flex justify-end">
-        <PrimaryButton icon={<Upload size={14} />} disabled={files.length === 0} onClick={upload}>
-          Upload ({files.length})
+        <PrimaryButton icon={<Upload size={14} />} disabled={files.length === 0 || busy} onClick={upload}>
+          {busy ? 'Wird hochgeladen…' : `Upload (${files.length})`}
         </PrimaryButton>
       </div>
     </Modal>

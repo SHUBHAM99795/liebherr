@@ -16,12 +16,11 @@ import {
   Printer,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Document, Page, pdfjs } from 'react-pdf';
+import { Document, Page } from 'react-pdf';
 import 'react-pdf/dist/Page/TextLayer.css';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
+import '../pdf'; // configures the pdf.js worker
 import type { HighlightBox } from '../types';
-
-pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
 
 const ZOOM_MODES = ['Automatischer Zoom', 'Seitenbreite', '100%', '150%'] as const;
 

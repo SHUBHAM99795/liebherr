@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { useStore } from './store';
 import Layout from './components/Layout';
 import AnfragenList from './pages/AnfragenList';
 import AnfrageDetail from './pages/AnfrageDetail';
@@ -11,6 +12,10 @@ import Checklisten from './pages/Checklisten';
 import ChecklistItems from './pages/ChecklistItems';
 
 export default function App() {
+  // wait for IndexedDB hydration so persisted user data isn't overwritten
+  // by a render of the fixtures
+  const hydrated = useStore((s) => s.hydrated);
+  if (!hydrated) return null;
   return (
     <Routes>
       <Route element={<Layout />}>

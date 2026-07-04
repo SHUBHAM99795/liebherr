@@ -55,21 +55,29 @@ export default function AnfrageDetail() {
   const toggleDoc = (docId: string) =>
     setSelected((prev) => (prev.includes(docId) ? prev.filter((x) => x !== docId) : [...prev, docId]));
 
+  const segmentDoc = async (doc: (typeof anfrage.documents)[number]): Promise<number> => {
+    setDocument(doc.id, { segmentierungsStatus: 'In Bearbeitung' });
+    try {
+      const segments = await segmentationService.segment(doc.pdfUrl);
+      replaceSegments(doc.id, segments);
+      setDocument(doc.id, {
+        segmentierungsStatus: 'Segmentiert',
+        pageCount: Math.max(doc.pageCount, ...segments.map((s) => s.page), 1),
+      });
+      return segments.length;
+    } catch (e) {
+      setDocument(doc.id, { segmentierungsStatus: 'Nicht segmentiert' });
+      toast.error(`Segmentierung von ${doc.fileName} fehlgeschlagen`);
+      return 0;
+    }
+  };
+
   const segmentSelected = async () => {
     const id = toast.loading('Segmentierung läuft…');
     let total = 0;
     for (const doc of selectedDocs) {
       if (doc.segmentierungsStatus === 'Segmentiert') continue;
-      setDocument(doc.id, { segmentierungsStatus: 'In Bearbeitung' });
-      try {
-        const segments = await segmentationService.segment(doc.pdfUrl);
-        replaceSegments(doc.id, segments);
-        setDocument(doc.id, { segmentierungsStatus: 'Segmentiert', pageCount: Math.max(...segments.map((s) => s.page), 1) });
-        total += segments.length;
-      } catch (e) {
-        setDocument(doc.id, { segmentierungsStatus: 'Nicht segmentiert' });
-        toast.error(`Segmentierung von ${doc.fileName} fehlgeschlagen`);
-      }
+      total += await segmentDoc(doc);
     }
     toast.success(`${total} Segmente erstellt`, { id });
   };
@@ -253,6 +261,19 @@ export default function AnfrageDetail() {
             >
               {d.segmentierungsStatus}
             </span>
+            {d.segmentierungsStatus === 'Nicht segmentiert' && (
+              <ToolbarButton
+                className="!h-7 !text-xs"
+                icon={<RefreshCw size={12} />}
+                onClick={async () => {
+                  const id = toast.loading('Segmentierung läuft…');
+                  const n = await segmentDoc(d);
+                  toast.success(`${n} Segmente erstellt`, { id });
+                }}
+              >
+                Segmentieren
+              </ToolbarButton>
+            )}
             <span className="w-24 text-right text-gray-500">{formatDate(d.uploadedAt)}</span>
           </div>
         ))}

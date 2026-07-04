@@ -5,6 +5,7 @@
 import { Trash2, Upload } from 'lucide-react';
 import { useRef } from 'react';
 import { toast } from 'sonner';
+import { extractKeywordsFromPdf } from '../services/segmentation';
 import { useStore } from '../store';
 import { formatDate } from '../utils/status';
 import { PrimaryButton } from '../components/ui';
@@ -14,17 +15,28 @@ export default function InterneStandards() {
   const { addStandard, deleteStandard } = useStore();
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const onFiles = (files: FileList | null) => {
+  const onFiles = async (files: FileList | null) => {
     if (!files) return;
+    const id = toast.loading('Standards werden analysiert…');
     for (const f of Array.from(files)) {
+      const url = URL.createObjectURL(f);
+      let keywords: string[] = [];
+      try {
+        // real keyword extraction so the Standardabgleich works on user files
+        keywords = await extractKeywordsFromPdf(url);
+      } catch {
+        // unreadable PDF — standard is still added, just without keywords
+      } finally {
+        URL.revokeObjectURL(url);
+      }
       addStandard({
         name: f.name.replace(/\.pdf$/i, ''),
         version: '1.0',
         uploadedAt: new Date().toISOString().slice(0, 10),
-        keywords: [],
+        keywords,
       });
     }
-    toast(`${files.length} Standard${files.length > 1 ? 's' : ''} hochgeladen`);
+    toast.success(`${files.length} Standard${files.length > 1 ? 's' : ''} hochgeladen`, { id });
   };
 
   return (
