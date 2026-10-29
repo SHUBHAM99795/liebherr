@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-[#f7f8fa] text-gray-900 text-sm antialiased;
+}
+
+/* mini tables rendered from segment HTML */
+.segment-table table {
+  @apply w-full border-collapse text-xs;
+}
+.segment-table th,
+.segment-table td {
+  @apply border border-gray-300 px-1.5 py-0.5 text-left align-top;
+}
+.segment-table th {
+  @apply bg-gray-50 font-semibold;
+}
+
+/* react-pdf layers */
+.react-pdf__Page {
+  position: relative;
+}
+.react-pdf__Page__textContent {
+  user-select: text;
+}
