@@ -1,5 +1,21 @@
 # SpecMatrix — Compliance Matrix Tool
 
+## GitHub Pages app
+
+The Liebherr CRS calculator is hosted from the original offline bundle in
+`public/liebherr-crs-offline/`. GitHub Actions publishes that folder to
+[https://shubham99795.github.io/liebherr/](https://shubham99795.github.io/liebherr/)
+when its files change on the default branch. The existing React/Vite
+compliance-matrix project below remains available as a separate source app.
+
+To preview the hosted calculator locally, serve its folder over HTTP:
+
+```bash
+python -m http.server 8000 --directory public/liebherr-crs-offline
+```
+
+Then open `http://localhost:8000`.
+
 A single-page React application for requirements engineering / compliance
 matrix generation: upload customer specification PDFs, segment them, review
 every requirement in a PDF split view, assign departments (manually or via

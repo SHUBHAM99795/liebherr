@@ -1,0 +1,35 @@
+name: Deploy Liebherr CRS to GitHub Pages
+
+on:
+  push:
+    branches: ['claude/code-writing-l6emo5']
+    paths:
+      - 'public/liebherr-crs-offline/**'
+      - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: Upload offline application
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public/liebherr-crs-offline
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
